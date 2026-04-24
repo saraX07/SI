@@ -1,9 +1,10 @@
 import React from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { LogOut, Calendar, LayoutDashboard } from 'lucide-react';
 
 const Navbar: React.FC = () => {
   const location = useLocation();
+  const navigate = useNavigate();
 
   const navLinks = [
     { name: 'Salles', path: '/salles', icon: <Calendar className="w-4 h-4" /> },
@@ -11,6 +12,11 @@ const Navbar: React.FC = () => {
   ];
 
   const isActive = (path: string) => location.pathname === path;
+
+  const handleLogout = () => {
+    localStorage.removeItem('userEmail');
+    navigate('/auth');
+  };
 
   return (
     <nav className="bg-white border-b border-slate-100 py-4 px-6 md:px-12 flex justify-between items-center sticky top-0 z-50">
@@ -34,7 +40,10 @@ const Navbar: React.FC = () => {
           ))}
         </div>
         
-        <button className="flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-red-500 transition-colors">
+        <button
+          onClick={handleLogout}
+          className="flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-red-500 transition-colors"
+        >
           <LogOut className="w-4 h-4 transform rotate-180" />
           <span className="hidden xs:inline">Déconnexion</span>
         </button>

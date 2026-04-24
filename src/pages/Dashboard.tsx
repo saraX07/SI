@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Navbar from '../components/Navbar';
-import { bookings } from '../data/bookings';
+import { getBookings, setBookings } from '../data/bookings';
 import type { Booking } from '../data/bookings';
-import { halls } from '../data/halls';
+import { getHalls } from '../data/halls';
 
 import { Calendar, Clock, AlertCircle, Download, CheckCircle2, XCircle, X, ChevronRight, Upload } from 'lucide-react';
 
@@ -42,9 +42,39 @@ const generateAlternativeSlots = (dateStr: string) => {
 };
 
 const Dashboard: React.FC = () => {
-  const [localBookings, setLocalBookings] = useState(bookings);
+  const [localBookings, setLocalBookings] = useState<Booking[]>([]);
+  const [halls, setLocalHalls] = useState(getHalls());
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
+  const [uploadingId, setUploadingId] = useState<string | null>(null);
+  const [uploadSuccess, setUploadSuccess] = useState(false);
   const modalContentRef = useRef<HTMLDivElement>(null);
+
+  /* Live sync with admin changes */
+  const refresh = useCallback(() => {
+    setLocalBookings(getBookings());
+    setLocalHalls(getHalls());
+  }, []);
+
+  useEffect(() => {
+    refresh();
+    window.addEventListener('bookingsChanged', refresh);
+    window.addEventListener('hallsChanged', refresh);
+    window.addEventListener('storage', refresh);
+    return () => {
+      window.removeEventListener('bookingsChanged', refresh);
+      window.removeEventListener('hallsChanged', refresh);
+      window.removeEventListener('storage', refresh);
+    };
+  }, [refresh]);
+
+  /* Keep modal in sync when bookings change externally (e.g. admin action) */
+  useEffect(() => {
+    if (selectedBooking) {
+      const updated = localBookings.find((b) => b.id === selectedBooking.id);
+      if (updated) setSelectedBooking(updated);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [localBookings]);
 
   useEffect(() => {
     if (selectedBooking && modalContentRef.current) {
@@ -56,17 +86,41 @@ const Dashboard: React.FC = () => {
 
   const handleCancel = (id: string) => {
     if (window.confirm("Êtes-vous sûr d'annuler cette réservation ?")) {
-      setLocalBookings(prev => prev.map(b => {
-        if (b.id === id) {
-          let newPaymentStatus = b.paymentStatus;
-          if (b.paymentStatus === 'payé') newPaymentStatus = 'en attente de remboursement';
-          else if (b.paymentStatus === 'en attente de paiement') newPaymentStatus = 'non applicable';
-          
-          return { ...b, status: 'annulé', paymentStatus: newPaymentStatus };
-        }
-        return b;
-      }));
+      const all = getBookings();
+      const updated = all.map((b) => {
+        if (b.id !== id) return b;
+        let newPaymentStatus: string = b.paymentStatus ?? '';
+        if (b.paymentStatus === 'payé') newPaymentStatus = 'en attente de remboursement';
+        else if (b.paymentStatus === 'en attente de paiement') newPaymentStatus = 'non applicable';
+        return { ...b, status: 'annulé' as const, paymentStatus: newPaymentStatus };
+      });
+      setBookings(updated);
     }
+  };
+
+  const handleReceiptUpload = (booking: Booking, file: File) => {
+    setUploadingId(booking.id);
+    setUploadSuccess(false);
+    const reader = new FileReader();
+    reader.onload = () => {
+      const all = getBookings();
+      const updated = all.map((b) =>
+        b.id === booking.id
+          ? {
+              ...b,
+              paymentReceiptName: file.name,
+              paymentReceiptData: reader.result as string,
+              status: 'payée' as const,
+              paymentStatus: 'payé',
+            }
+          : b,
+      );
+      setBookings(updated);
+      setUploadingId(null);
+      setUploadSuccess(true);
+      setTimeout(() => setUploadSuccess(false), 3000);
+    };
+    reader.readAsDataURL(file);
   };
 
   const getStatusStyle = (status: string) => {
@@ -74,6 +128,7 @@ const Dashboard: React.FC = () => {
       case 'accepté': return 'bg-green-50 text-green-700 border-green-200';
       case 'refusé': return 'bg-red-50 text-red-700 border-red-200';
       case 'annulé': return 'bg-slate-100 text-slate-700 border-slate-300';
+      case 'payée': return 'bg-emerald-50 text-emerald-700 border-emerald-200';
       default: return 'bg-amber-50 text-amber-700 border-amber-200';
     }
   };
@@ -90,7 +145,8 @@ const Dashboard: React.FC = () => {
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'accepté': return <CheckCircle2 className="w-5 h-5 text-green-600" />;
+      case 'accepté':
+      case 'payée': return <CheckCircle2 className="w-5 h-5 text-green-600" />;
       case 'refusé': return <XCircle className="w-5 h-5 text-red-600" />;
       case 'annulé': return <XCircle className="w-5 h-5 text-slate-600" />;
       default: return <Clock className="w-5 h-5 text-amber-600" />;
@@ -110,6 +166,13 @@ const Dashboard: React.FC = () => {
             Suivez l'état de vos demandes et gérez vos événements.
           </p>
         </header>
+
+        {uploadSuccess && (
+          <div className="mb-6 flex items-center gap-3 bg-emerald-50 border border-emerald-200 text-emerald-800 font-medium text-sm px-5 py-3 rounded-xl">
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+            Reçu envoyé avec succès. Statut mis à jour en <strong>payée</strong>.
+          </div>
+        )}
 
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
           <div className="overflow-x-auto">
@@ -167,13 +230,25 @@ const Dashboard: React.FC = () => {
                             Annuler
                           </button>
                         )}
-                        <button
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-blue-50 font-medium text-sm transition-all"
-                          title="Télécharger le reçu"
-                        >
-                          <Download className="w-4 h-4" />
-                          <span className="hidden sm:inline">Reçu</span>
-                        </button>
+                        {booking.paymentReceiptData ? (
+                          <a
+                            href={booking.paymentReceiptData}
+                            download={booking.paymentReceiptName || 'recu'}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-blue-50 font-medium text-sm transition-all"
+                            title="Télécharger le reçu"
+                          >
+                            <Download className="w-4 h-4" />
+                            <span className="hidden sm:inline">Reçu</span>
+                          </a>
+                        ) : (
+                          <button
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-blue-50 font-medium text-sm transition-all"
+                            title="Télécharger le reçu"
+                          >
+                            <Download className="w-4 h-4" />
+                            <span className="hidden sm:inline">Reçu</span>
+                          </button>
+                        )}
                         <button 
                           onClick={() => setSelectedBooking(booking)}
                           className="text-blue-600 font-bold text-sm hover:underline"
@@ -288,6 +363,11 @@ const Dashboard: React.FC = () => {
                         <input
                           type="file"
                           accept="image/*,.pdf"
+                          disabled={!!uploadingId}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) handleReceiptUpload(selectedBooking, file);
+                          }}
                           className="block w-full text-sm text-slate-500
                             file:mr-4 file:py-2.5 file:px-4
                             file:rounded-lg file:border-0
@@ -299,12 +379,37 @@ const Dashboard: React.FC = () => {
                         />
                       </div>
                       <p className="text-xs text-blue-600/80 font-medium">Format accepté : PDF ou Image. La taille max est de 5Mo.</p>
+                      {uploadingId === selectedBooking.id && (
+                        <p className="text-sm text-blue-600 font-medium animate-pulse">Envoi en cours…</p>
+                      )}
                       <button className="mt-2 w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-sm transition-colors flex items-center justify-center gap-2">
                         <Upload className="w-4 h-4 text-white" />
                         Envoyer le reçu
                       </button>
                     </div>
                   </div>
+                </div>
+              )}
+
+              {/* ── Paid (payée) ── */}
+              {selectedBooking.status === 'payée' && (
+                <div className="space-y-3">
+                  <div className="bg-emerald-50 p-4 rounded-xl border border-emerald-100 text-sm font-medium text-emerald-800">
+                    Votre paiement a été reçu.
+                    {selectedBooking.paymentStatus && (
+                      <span> Statut admin : <strong>{selectedBooking.paymentStatus}</strong></span>
+                    )}
+                  </div>
+                  {selectedBooking.paymentReceiptData && (
+                    <a
+                      href={selectedBooking.paymentReceiptData}
+                      download={selectedBooking.paymentReceiptName || 'recu'}
+                      className="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 hover:border-blue-300 hover:bg-blue-50 rounded-xl text-sm font-bold text-slate-700 hover:text-blue-700 transition-colors"
+                    >
+                      <Download className="w-4 h-4" />
+                      Télécharger mon reçu
+                    </a>
+                  )}
                 </div>
               )}
 
@@ -320,6 +425,7 @@ const Dashboard: React.FC = () => {
                 </div>
               )}
 
+              {/* ── Pending / accepted (no special payment condition) ── */}
               {(selectedBooking.status === 'en attente' || selectedBooking.status === 'accepté') && selectedBooking.paymentStatus !== 'en attente de remboursement' && (
                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
                   <p className="text-sm text-slate-600 leading-relaxed font-medium">
@@ -329,6 +435,17 @@ const Dashboard: React.FC = () => {
                   </p>
                 </div>
               )}
+
+              {/* ── Cancelled ── */}
+              {selectedBooking.status === 'annulé' &&
+                selectedBooking.paymentStatus !== 'en attente de remboursement' && (
+                <div className="bg-slate-100 p-4 rounded-xl border border-slate-200">
+                  <p className="text-sm text-slate-600 leading-relaxed font-medium">
+                    Cette réservation a été annulée.
+                  </p>
+                </div>
+              )}
+
               <div ref={modalContentRef} />
             </div>
           </div>
@@ -339,4 +456,3 @@ const Dashboard: React.FC = () => {
 };
 
 export default Dashboard;
-

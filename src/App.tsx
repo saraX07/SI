@@ -4,6 +4,7 @@ import Halls from './pages/Halls';
 import Booking from './pages/Booking';
 import Dashboard from './pages/Dashboard';
 import Auth from './pages/Auth';
+import Admin from './pages/admin';
 
 function App() {
   return (
@@ -16,6 +17,7 @@ function App() {
             <Route path="/reservation" element={<Booking />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/auth" element={<Auth />} />
+            <Route path="/admin" element={<Admin />} />
           </Routes>
         </main>
       </div>

@@ -10,7 +10,7 @@ export interface Hall {
   rib: string;
 }
 
-export const halls: Hall[] = [
+export const initialHalls: Hall[] = [
   {
     id: '1',
     name: 'Salle Alger',
@@ -30,7 +30,7 @@ export const halls: Hall[] = [
     imageLetter: 'O',
     image: '/images/hall2.png',
     description: 'Espace élégant parfait pour réunions professionnelles.',
-    location: 'Zone d\'affaires, Oran',
+    location: "Zone d'affaires, Oran",
     rib: '002 00456 7890123456 78',
   },
   {
@@ -45,3 +45,17 @@ export const halls: Hall[] = [
     rib: '003 00789 0123456789 01',
   },
 ];
+
+export const getHalls = (): Hall[] => {
+  const local = localStorage.getItem('halls');
+  if (local) return JSON.parse(local);
+  return initialHalls;
+};
+
+export const setHalls = (newHalls: Hall[]) => {
+  localStorage.setItem('halls', JSON.stringify(newHalls));
+  window.dispatchEvent(new Event('hallsChanged'));
+};
+
+// keep 'halls' export for existing imports
+export const halls: Hall[] = initialHalls;

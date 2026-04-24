@@ -2,17 +2,35 @@ import React, { useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import { halls } from '../data/halls';
+import { getBookings, setBookings } from '../data/bookings';
 import { Calendar, Clock, MapPin, CheckCircle2, ArrowLeft } from 'lucide-react';
 
 const Booking: React.FC = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [date, setDate] = useState('');
+  const [startTime, setStartTime] = useState('');
+  const [endTime, setEndTime] = useState('');
   const hallId = searchParams.get('hall');
   const hall = halls.find(h => h.id === hallId) || halls[0];
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    const newBooking = {
+      id: `b${Date.now()}`,
+      hallName: hall.name,
+      date,
+      startTime,
+      endTime,
+      status: 'en attente de paiement' as const,
+      userId: localStorage.getItem('userEmail') || 'user_demo',
+    };
+
+    const currentBookings = getBookings();
+    setBookings([newBooking, ...currentBookings]);
+
     setIsSubmitted(true);
     setTimeout(() => navigate('/dashboard'), 2000);
   };
@@ -51,7 +69,13 @@ const Booking: React.FC = () => {
                 <label className="text-sm font-bold text-slate-700">Date souhaitée</label>
                 <div className="relative">
                   <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <input type="date" required className="input-field pl-10" />
+                  <input 
+                    type="date" 
+                    required 
+                    className="input-field pl-10" 
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                  />
                 </div>
               </div>
 
@@ -60,14 +84,26 @@ const Booking: React.FC = () => {
                   <label className="text-sm font-bold text-slate-700">Début</label>
                   <div className="relative">
                     <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <input type="time" required className="input-field pl-10" />
+                    <input 
+                      type="time" 
+                      required 
+                      className="input-field pl-10" 
+                      value={startTime}
+                      onChange={(e) => setStartTime(e.target.value)}
+                    />
                   </div>
                 </div>
                 <div className="space-y-1">
                   <label className="text-sm font-bold text-slate-700">Fin</label>
                   <div className="relative">
                     <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <input type="time" required className="input-field pl-10" />
+                    <input 
+                      type="time" 
+                      required 
+                      className="input-field pl-10" 
+                      value={endTime}
+                      onChange={(e) => setEndTime(e.target.value)}
+                    />
                   </div>
                 </div>
               </div>

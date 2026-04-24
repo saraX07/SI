@@ -1,16 +1,23 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Eye, EyeOff } from 'lucide-react';
+
+const ADMIN_EMAIL = 'admin@reservasalles.dz';
 
 const Auth: React.FC = () => {
   const [isLogin, setIsLogin] = useState(true);
-  const [showPassword, setShowPassword] = useState(false);
+  const [email, setEmail] = useState('');
   const navigate = useNavigate();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // Mock login
-    navigate('/salles');
+    // Store current user email for role checks
+    localStorage.setItem('userEmail', email);
+    // Role-based redirect
+    if (email.trim().toLowerCase() === ADMIN_EMAIL) {
+      navigate('/admin');
+    } else {
+      navigate('/salles');
+    }
   };
 
   return (
@@ -67,32 +74,24 @@ const Auth: React.FC = () => {
                 type="email" 
                 placeholder="exemple@email.com" 
                 className="input-field"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 required
               />
             </div>
 
             <div className="space-y-1">
               <label className="text-sm font-bold text-slate-700">Mot de passe</label>
-              <div className="relative">
-                <input 
-                  type={showPassword ? "text" : "password"} 
-                  placeholder="••••••••" 
-                  className="input-field pr-10"
-                  required
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors focus:outline-none"
-                  aria-label={showPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"}
-                >
-                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                </button>
-              </div>
+              <input 
+                type="password" 
+                placeholder="••••••••" 
+                className="input-field"
+                required
+              />
             </div>
 
             <button type="submit" className="btn-blue w-full py-3 text-lg font-bold shadow-lg shadow-blue-100 mt-8">
-              {isLogin ? 'Se connecter' : 'S\'inscrire'}
+              {isLogin ? 'Se connecter' : "S'inscrire"}
             </button>
           </form>
 
@@ -101,7 +100,7 @@ const Auth: React.FC = () => {
               onClick={() => setIsLogin(!isLogin)}
               className="text-sm font-bold text-blue-600 hover:text-blue-700"
             >
-              {isLogin ? 'Pas encore de compte ? S\'inscrire' : 'Déjà un compte ? Se connecter'}
+              {isLogin ? "Pas encore de compte ? S'inscrire" : 'Déjà un compte ? Se connecter'}
             </button>
           </div>
         </div>

@@ -1,5 +1,18 @@
-export type BookingStatus = 'en attente' | 'accepté' | 'refusé' | 'annulé';
-export type PaymentStatus = 'en attente de paiement' | 'payé' | 'en attente de remboursement' | 'remboursé' | 'non applicable';
+// ─── Booking status (reservation state) ────────────────────────────
+export type BookingStatus =
+  | 'en attente'
+  | 'accepté'
+  | 'refusé'
+  | 'annulé';
+
+// ─── Payment status (payment state, managed by admin) ───────────────
+export type PaymentStatus =
+  | 'payé'
+  | 'en attente de paiement'
+  | 'en attente de remboursement'
+  | 'remboursé'
+  | 'non applicable'
+  | '';
 
 export interface Booking {
   id: string;
@@ -8,13 +21,16 @@ export interface Booking {
   startTime: string;
   endTime: string;
   status: BookingStatus;
-  paymentStatus: PaymentStatus;
+  paymentStatus?: PaymentStatus | string; // managed by admin
   userId: string;
+  userName?: string;
   paymentReceiptName?: string;
+  paymentReceiptData?: string; // base64 data URI
   refusalReason?: string;
+  adminSeen?: boolean; // false = "pas traité par admin"
 }
 
-export let bookings: Booking[] = [
+export const initialBookings: Booking[] = [
   {
     id: 'b1',
     hallName: 'Salle Alger',
@@ -24,6 +40,8 @@ export let bookings: Booking[] = [
     status: 'accepté',
     paymentStatus: 'payé',
     userId: 'u1',
+    userName: 'Ahmed Benali',
+    adminSeen: true,
   },
   {
     id: 'b2',
@@ -34,6 +52,8 @@ export let bookings: Booking[] = [
     status: 'en attente',
     paymentStatus: 'non applicable',
     userId: 'u1',
+    userName: 'Ahmed Benali',
+    adminSeen: false,
   },
   {
     id: 'b3',
@@ -44,7 +64,9 @@ export let bookings: Booking[] = [
     status: 'refusé',
     paymentStatus: 'non applicable',
     userId: 'u1',
+    userName: 'Ahmed Benali',
     refusalReason: 'occupée',
+    adminSeen: true,
   },
   {
     id: 'b4',
@@ -55,6 +77,21 @@ export let bookings: Booking[] = [
     status: 'accepté',
     paymentStatus: 'en attente de paiement',
     userId: 'u1',
-    paymentReceiptName: 'reçu_virement.pdf',
+    userName: 'Ahmed Benali',
+    adminSeen: true,
   },
 ];
+
+export const getBookings = (): Booking[] => {
+  const local = localStorage.getItem('bookings');
+  if (local) return JSON.parse(local);
+  return initialBookings;
+};
+
+export const setBookings = (newBookings: Booking[]) => {
+  localStorage.setItem('bookings', JSON.stringify(newBookings));
+  window.dispatchEvent(new Event('bookingsChanged'));
+};
+
+// Legacy export kept for any remaining imports
+export let bookings = getBookings();
