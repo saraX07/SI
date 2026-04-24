@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Navbar from '../components/Navbar';
 import { bookings } from '../data/bookings';
 import type { Booking } from '../data/bookings';
 import { halls } from '../data/halls';
 
-import { Calendar, Clock, AlertCircle, Download, FileText, CheckCircle2, XCircle, CreditCard, X, ChevronRight, Upload } from 'lucide-react';
+import { Calendar, Clock, AlertCircle, Download, CheckCircle2, XCircle, X, ChevronRight, Upload } from 'lucide-react';
 
 const generateAlternativeSlots = (dateStr: string) => {
   const baseDate = new Date(dateStr);
@@ -42,14 +42,49 @@ const generateAlternativeSlots = (dateStr: string) => {
 };
 
 const Dashboard: React.FC = () => {
+  const [localBookings, setLocalBookings] = useState(bookings);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
+  const modalContentRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (selectedBooking && modalContentRef.current) {
+      setTimeout(() => {
+        modalContentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      }, 50);
+    }
+  }, [selectedBooking]);
+
+  const handleCancel = (id: string) => {
+    if (window.confirm("Êtes-vous sûr d'annuler cette réservation ?")) {
+      setLocalBookings(prev => prev.map(b => {
+        if (b.id === id) {
+          let newPaymentStatus = b.paymentStatus;
+          if (b.paymentStatus === 'payé') newPaymentStatus = 'en attente de remboursement';
+          else if (b.paymentStatus === 'en attente de paiement') newPaymentStatus = 'non applicable';
+          
+          return { ...b, status: 'annulé', paymentStatus: newPaymentStatus };
+        }
+        return b;
+      }));
+    }
+  };
 
   const getStatusStyle = (status: string) => {
     switch (status) {
       case 'accepté': return 'bg-green-50 text-green-700 border-green-200';
       case 'refusé': return 'bg-red-50 text-red-700 border-red-200';
-      case 'en attente de paiement': return 'bg-blue-50 text-blue-700 border-blue-200';
+      case 'annulé': return 'bg-slate-100 text-slate-700 border-slate-300';
       default: return 'bg-amber-50 text-amber-700 border-amber-200';
+    }
+  };
+
+  const getPaymentStatusStyle = (status: string) => {
+    switch (status) {
+      case 'payé': return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+      case 'en attente de remboursement': return 'bg-orange-50 text-orange-700 border-orange-200';
+      case 'remboursé': return 'bg-slate-50 text-slate-700 border-slate-300';
+      case 'en attente de paiement': return 'bg-blue-50 text-blue-700 border-blue-200';
+      default: return 'bg-gray-50 text-gray-700 border-gray-200';
     }
   };
 
@@ -57,7 +92,7 @@ const Dashboard: React.FC = () => {
     switch (status) {
       case 'accepté': return <CheckCircle2 className="w-5 h-5 text-green-600" />;
       case 'refusé': return <XCircle className="w-5 h-5 text-red-600" />;
-      case 'en attente de paiement': return <CreditCard className="w-5 h-5 text-blue-600" />;
+      case 'annulé': return <XCircle className="w-5 h-5 text-slate-600" />;
       default: return <Clock className="w-5 h-5 text-amber-600" />;
     }
   };
@@ -83,12 +118,12 @@ const Dashboard: React.FC = () => {
                 <tr>
                   <th className="px-8 py-5">Salle</th>
                   <th className="px-8 py-5">Date & Heures</th>
-                  <th className="px-8 py-5">Statut</th>
+                  <th className="px-8 py-5">Statuts</th>
                   <th className="px-8 py-5 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {bookings.map((booking) => (
+                {localBookings.map((booking) => (
                   <tr key={booking.id} className="hover:bg-slate-50/30 transition-colors group">
                     <td className="px-8 py-6">
                       <div className="flex items-center gap-4">
@@ -111,12 +146,27 @@ const Dashboard: React.FC = () => {
                       </div>
                     </td>
                     <td className="px-8 py-6">
-                      <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold border tracking-wide uppercase ${getStatusStyle(booking.status)}`}>
-                        {booking.status}
-                      </span>
+                      <div className="flex flex-col gap-2 items-start">
+                        <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold border tracking-wide uppercase ${getStatusStyle(booking.status)}`}>
+                          RÉSA: {booking.status}
+                        </span>
+                        {booking.paymentStatus !== 'non applicable' && (
+                          <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold border tracking-wide uppercase ${getPaymentStatusStyle(booking.paymentStatus)}`}>
+                            PAIE: {booking.paymentStatus}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-8 py-6 text-right">
                       <div className="flex items-center justify-end gap-3">
+                        {booking.status !== 'annulé' && booking.status !== 'refusé' && (
+                          <button
+                            onClick={() => handleCancel(booking.id)}
+                            className="px-4 py-2 bg-red-50 text-red-600 hover:bg-red-100 font-bold text-sm rounded-lg transition-colors shadow-sm border border-red-100"
+                          >
+                            Annuler
+                          </button>
+                        )}
                         <button
                           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-blue-50 font-medium text-sm transition-all"
                           title="Télécharger le reçu"
@@ -138,7 +188,7 @@ const Dashboard: React.FC = () => {
             </table>
           </div>
 
-          {bookings.length === 0 && (
+          {localBookings.length === 0 && (
             <div className="py-20 text-center">
               <AlertCircle className="w-12 h-12 text-slate-200 mx-auto mb-4" />
               <p className="text-slate-400 font-medium">Vous n'avez aucune réservation pour le moment.</p>
@@ -150,8 +200,8 @@ const Dashboard: React.FC = () => {
       {/* Détails Modal */}
       {selectedBooking && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/50">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/50 shrink-0">
               <h3 className="font-bold text-lg text-slate-900 flex items-center gap-2">
                 Détails de la réservation
               </h3>
@@ -163,7 +213,7 @@ const Dashboard: React.FC = () => {
               </button>
             </div>
             
-            <div className="p-6">
+            <div className="p-6 overflow-y-auto">
               <div className="mb-6 flex items-start gap-4">
                 <div className={`p-3 rounded-full ${getStatusStyle(selectedBooking.status).replace('border', '')}`}>
                   {getStatusIcon(selectedBooking.status)}
@@ -213,12 +263,13 @@ const Dashboard: React.FC = () => {
                 </div>
               )}
 
-              {selectedBooking.status === 'en attente de paiement' && (
+              {selectedBooking.paymentStatus === 'en attente de paiement' && selectedBooking.status !== 'annulé' && (
                 <div className="space-y-6">
                   <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
                     <h5 className="text-sm font-bold text-blue-900 mb-2">Paiement requis</h5>
                     <p className="text-sm text-blue-800/80 mb-4 leading-relaxed">
-                      Votre réservation est pré-approuvée. Veuillez effectuer le paiement pour confirmer.
+                      Votre réservation est pré-approuvée. Veuillez effectuer le paiement pour confirmer.<br />
+                      <span className="font-bold text-red-600">Important :</span> Il faut payer avant 48 heures sinon votre réservation sera annulée.
                     </p>
                     
                     <div className="bg-white p-3 rounded-lg border border-blue-200/60 mb-4">
@@ -257,7 +308,19 @@ const Dashboard: React.FC = () => {
                 </div>
               )}
 
-              {(selectedBooking.status === 'en attente' || selectedBooking.status === 'accepté') && (
+              {selectedBooking.paymentStatus === 'en attente de remboursement' && (
+                <div className="bg-orange-50 p-4 rounded-xl border border-orange-200 shadow-sm">
+                  <h5 className="text-sm font-bold text-orange-900 mb-2">Remboursement en cours</h5>
+                  <p className="text-sm text-orange-800 mb-3 leading-relaxed">
+                    Votre demande d'annulation est acceptée. Le montant payé est de <strong>{halls.find(h => h.name === selectedBooking.hallName)?.price?.toLocaleString()} DA</strong> et le remboursement est en cours de traitement. Vous serez remboursé(e) à <strong>80%</strong>.
+                  </p>
+                  <div className="text-sm text-orange-800 font-medium bg-orange-100/50 p-3 rounded-lg flex items-center gap-2">
+                    Pour plus de questions, vous pouvez nous contacter via ce numéro de téléphone : <strong className="text-orange-900 text-base tracking-wide font-mono">07 77 12 34 56</strong>
+                  </div>
+                </div>
+              )}
+
+              {(selectedBooking.status === 'en attente' || selectedBooking.status === 'accepté') && selectedBooking.paymentStatus !== 'en attente de remboursement' && (
                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
                   <p className="text-sm text-slate-600 leading-relaxed font-medium">
                     {selectedBooking.status === 'accepté' 
@@ -266,6 +329,7 @@ const Dashboard: React.FC = () => {
                   </p>
                 </div>
               )}
+              <div ref={modalContentRef} />
             </div>
           </div>
         </div>

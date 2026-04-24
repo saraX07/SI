@@ -1,4 +1,5 @@
-export type BookingStatus = 'en attente' | 'en attente de paiement' | 'accepté' | 'refusé';
+export type BookingStatus = 'en attente' | 'accepté' | 'refusé' | 'annulé';
+export type PaymentStatus = 'en attente de paiement' | 'payé' | 'en attente de remboursement' | 'remboursé' | 'non applicable';
 
 export interface Booking {
   id: string;
@@ -7,12 +8,13 @@ export interface Booking {
   startTime: string;
   endTime: string;
   status: BookingStatus;
+  paymentStatus: PaymentStatus;
   userId: string;
   paymentReceiptName?: string;
   refusalReason?: string;
 }
 
-export const bookings: Booking[] = [
+export let bookings: Booking[] = [
   {
     id: 'b1',
     hallName: 'Salle Alger',
@@ -20,6 +22,7 @@ export const bookings: Booking[] = [
     startTime: '18:00',
     endTime: '02:00',
     status: 'accepté',
+    paymentStatus: 'payé',
     userId: 'u1',
   },
   {
@@ -29,6 +32,7 @@ export const bookings: Booking[] = [
     startTime: '14:00',
     endTime: '22:00',
     status: 'en attente',
+    paymentStatus: 'non applicable',
     userId: 'u1',
   },
   {
@@ -38,6 +42,7 @@ export const bookings: Booking[] = [
     startTime: '19:00',
     endTime: '04:00',
     status: 'refusé',
+    paymentStatus: 'non applicable',
     userId: 'u1',
     refusalReason: 'occupée',
   },
@@ -47,7 +52,8 @@ export const bookings: Booking[] = [
     date: '2026-09-05',
     startTime: '09:00',
     endTime: '17:00',
-    status: 'en attente de paiement',
+    status: 'accepté',
+    paymentStatus: 'en attente de paiement',
     userId: 'u1',
     paymentReceiptName: 'reçu_virement.pdf',
   },
