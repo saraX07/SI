@@ -44,6 +44,17 @@ export const initialHalls: Hall[] = [
     location: 'Jardin des Roses, Alger',
     rib: '003 00789 0123456789 01',
   },
+  {
+    id: '4',
+    name: 'Palais des Fêtes Zitoun',
+    capacity: 700,
+    price: 120000,
+    imageLetter: 'P',
+    image: '/images/hall4.png',
+    description: 'Cadre luxueux avec jardin privatif, salle climatisée, cuisine professionnelle et décoration florale incluse.',
+    location: 'Aïn Oulmane, Sétif',
+    rib: '007 99999 00010 02200 70',
+  },
 ];
 
 export const getHalls = (): Hall[] => {
@@ -57,5 +68,4 @@ export const setHalls = (newHalls: Hall[]) => {
   window.dispatchEvent(new Event('hallsChanged'));
 };
 
-// keep 'halls' export for existing imports
 export const halls: Hall[] = initialHalls;

@@ -1,15 +1,32 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { getBookings, setBookings } from '../data/bookings';
+import { supabase } from '../lib/supabase';
+import { bookingService } from '../services/bookingService';
+import { hallService } from '../services/hallService';
+import { authService } from '../services/authService';
 import type { Booking } from '../data/bookings';
-import { getHalls, setHalls } from '../data/halls';
 import type { Hall } from '../data/halls';
 import {
   LogOut, Calendar, Clock, CheckCircle2, XCircle, CreditCard,
-  Download, Eye, X, Plus, AlertCircle, LayoutDashboard,
+  Download, Eye, X, Plus, AlertCircle, LayoutDashboard, FileX,
 } from 'lucide-react';
 
-const ADMIN_EMAIL = 'admin@reservasalles.dz';
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+const isImageUrl = (url: string): boolean => {
+  if (url.startsWith('data:image')) return true;
+  try {
+    const pathname = new URL(url).pathname.toLowerCase();
+    return /\.(jpg|jpeg|png|gif|webp|bmp|svg)$/.test(pathname);
+  } catch {
+    return false;
+  }
+};
+
+const isValidReceiptUrl = (url: string): boolean =>
+  url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:');
+
+// ── Component ──────────────────────────────────────────────────────────────
 
 const Admin: React.FC = () => {
   const navigate = useNavigate();
@@ -22,33 +39,63 @@ const Admin: React.FC = () => {
   const [newHall, setNewHall] = useState({
     name: '', capacity: '', price: '', location: '', description: '', rib: '',
   });
+  const [isAdmin, setIsAdmin] = useState(false);
 
-  // Guard: only admin can access
+  // Check if user is admin
   useEffect(() => {
-    const email = localStorage.getItem('userEmail');
-    if (!email || email.toLowerCase() !== ADMIN_EMAIL) {
-      navigate('/auth');
-    }
+    const checkAdmin = async () => {
+      const user = await authService.getCurrentUser();
+      if (!user) {
+        navigate('/auth');
+        return;
+      }
+      
+      const { data: profile } = await authService.getProfile(user.id);
+      if (profile?.role !== 'admin') {
+        navigate('/salles');
+      } else {
+        setIsAdmin(true);
+      }
+    };
+    
+    checkAdmin();
   }, [navigate]);
 
-  const refresh = useCallback(() => {
-    setLocalBookings(getBookings());
-    setLocalHalls(getHalls());
-  }, []);
+  const refresh = useCallback(async () => {
+    if (!isAdmin) return;
+    const allBookings = await bookingService.getAllBookings();
+    const allHalls = await hallService.getAllHalls();
+    setLocalBookings(allBookings);
+    setLocalHalls(allHalls);
+  }, [isAdmin]);
 
   useEffect(() => {
-    refresh();
-    window.addEventListener('bookingsChanged', refresh);
-    window.addEventListener('hallsChanged', refresh);
-    window.addEventListener('storage', refresh);
-    return () => {
-      window.removeEventListener('bookingsChanged', refresh);
-      window.removeEventListener('hallsChanged', refresh);
-      window.removeEventListener('storage', refresh);
-    };
-  }, [refresh]);
+    if (isAdmin) {
+      refresh();
+      
+      const bookingsSubscription = supabase
+        .channel('admin_bookings')
+        .on('postgres_changes', 
+          { event: '*', schema: 'public', table: 'bookings' },
+          () => refresh()
+        )
+        .subscribe();
 
-  // Keep modal in sync
+      const hallsSubscription = supabase
+        .channel('admin_halls')
+        .on('postgres_changes',
+          { event: '*', schema: 'public', table: 'halls' },
+          () => refresh()
+        )
+        .subscribe();
+
+      return () => {
+        bookingsSubscription.unsubscribe();
+        hallsSubscription.unsubscribe();
+      };
+    }
+  }, [isAdmin, refresh]);
+
   useEffect(() => {
     if (selectedBooking) {
       const updated = bookings.find((b) => b.id === selectedBooking.id);
@@ -57,55 +104,51 @@ const Admin: React.FC = () => {
         setEditPayStatus(updated.paymentStatus || '');
       }
     }
-  }, [bookings]);
+  }, [bookings, selectedBooking]);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await authService.signOut();
     localStorage.removeItem('userEmail');
     navigate('/auth');
   };
 
-  const updateBooking = (id: string, changes: Partial<Booking>) => {
-    const all = getBookings();
-    const updated = all.map((b) => (b.id === id ? { ...b, ...changes } : b));
-    setBookings(updated);
+  const updateBooking = async (id: string, changes: Partial<Booking>) => {
+    await bookingService.updateBooking(id, changes);
+    await refresh();
   };
 
-  const handleConfirm = (booking: Booking) => {
-    // Confirm booking; if not yet awaiting payment, set payment to awaiting
+  const handleConfirm = async (booking: Booking) => {
     const newPayStatus =
       booking.paymentStatus && booking.paymentStatus !== 'non applicable' && booking.paymentStatus !== ''
         ? booking.paymentStatus
         : 'en attente de paiement';
-    updateBooking(booking.id, { status: 'accepté', adminSeen: true, paymentStatus: newPayStatus });
+    await updateBooking(booking.id, { status: 'accepté', adminSeen: true, paymentStatus: newPayStatus });
   };
 
-  const handleRefuse = (booking: Booking) => {
-    updateBooking(booking.id, { status: 'refusé', adminSeen: true, refusalReason: 'admin', paymentStatus: 'non applicable' });
+  const handleRefuse = async (booking: Booking) => {
+    await updateBooking(booking.id, { status: 'refusé', adminSeen: true, refusalReason: 'admin', paymentStatus: 'non applicable' });
   };
 
-  const handleSavePayStatus = () => {
+  const handleSavePayStatus = async () => {
     if (!selectedBooking) return;
-    updateBooking(selectedBooking.id, { paymentStatus: editPayStatus });
+    await updateBooking(selectedBooking.id, { paymentStatus: editPayStatus });
   };
 
-  const handleAddHall = (e: React.FormEvent) => {
+  const handleAddHall = async (e: React.FormEvent) => {
     e.preventDefault();
-    const all = getHalls();
-    const letters = ['A','B','C','D','E','F','G','H','I','J','K','L','M'];
-    const hall: Hall = {
-      id: String(Date.now()),
+    await hallService.addHall({
       name: newHall.name,
       capacity: parseInt(newHall.capacity) || 0,
       price: parseInt(newHall.price) || 0,
-      imageLetter: newHall.name.charAt(0).toUpperCase() || letters[all.length % letters.length],
+      imageLetter: newHall.name.charAt(0).toUpperCase(),
       image: '/images/hall1.png',
       description: newHall.description,
       location: newHall.location,
       rib: newHall.rib,
-    };
-    setHalls([...all, hall]);
+    });
     setNewHall({ name: '', capacity: '', price: '', location: '', description: '', rib: '' });
     setShowAddHall(false);
+    await refresh();
   };
 
   const getStatusStyle = (status: string) => {
@@ -113,7 +156,7 @@ const Admin: React.FC = () => {
       case 'accepté':  return 'bg-green-50 text-green-700 border-green-200';
       case 'refusé':   return 'bg-red-50 text-red-700 border-red-200';
       case 'annulé':   return 'bg-slate-100 text-slate-700 border-slate-300';
-      default:         return 'bg-amber-50 text-amber-700 border-amber-200'; // en attente
+      default:         return 'bg-amber-50 text-amber-700 border-amber-200';
     }
   };
 
@@ -129,6 +172,17 @@ const Admin: React.FC = () => {
 
   const pendingCount = bookings.filter((b) => !b.adminSeen && b.status === 'en attente').length;
   const awaitingPaymentCount = bookings.filter((b) => b.paymentStatus === 'en attente de paiement').length;
+
+  if (!isAdmin) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-slate-600">Vérification des droits d'administration...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-slate-50 min-h-screen">
@@ -227,11 +281,11 @@ const Admin: React.FC = () => {
                       <td className="px-8 py-6">
                         <div className="flex flex-col gap-1 items-start">
                           <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold border tracking-wide uppercase ${getStatusStyle(booking.status)}`}>
-                            RÉSA : {booking.status}
+                            RÉSA: {booking.status}
                           </span>
                           {booking.paymentStatus && booking.paymentStatus !== 'non applicable' && booking.paymentStatus !== '' && (
                             <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold border tracking-wide uppercase ${getPaymentStatusStyle(booking.paymentStatus)}`}>
-                              PAIE : {booking.paymentStatus}
+                              PAIE: {booking.paymentStatus}
                             </span>
                           )}
                           {unseen && (
@@ -240,7 +294,7 @@ const Admin: React.FC = () => {
                         </div>
                       </td>
                       <td className="px-8 py-6">
-                        {booking.paymentReceiptData ? (
+                        {booking.paymentReceiptData && isValidReceiptUrl(booking.paymentReceiptData) ? (
                           <div className="flex items-center gap-2">
                             <button
                               onClick={() => setReceiptViewUrl(booking.paymentReceiptData!)}
@@ -251,7 +305,8 @@ const Admin: React.FC = () => {
                             </button>
                             <a
                               href={booking.paymentReceiptData}
-                              download={booking.paymentReceiptName || 'recu'}
+                              target="_blank"
+                              rel="noopener noreferrer"
                               className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-blue-50 font-medium text-xs transition-all"
                             >
                               <Download className="w-3.5 h-3.5" /> DL
@@ -301,7 +356,7 @@ const Admin: React.FC = () => {
           )}
         </div>
 
-        {/* Add Hall Button — below table */}
+        {/* Add Hall Button */}
         <div className="mt-6 flex justify-end">
           <button
             onClick={() => setShowAddHall(true)}
@@ -326,7 +381,7 @@ const Admin: React.FC = () => {
             <div className="p-6 space-y-5">
               <div className="flex items-start gap-4">
                 <div className={`p-3 rounded-full ${getStatusStyle(selectedBooking.status)}`}>
-                  {selectedBooking.status === 'accepté' || selectedBooking.status === 'payée'
+                  {selectedBooking.status === 'accepté'
                     ? <CheckCircle2 className="w-5 h-5" />
                     : selectedBooking.status === 'refusé'
                     ? <XCircle className="w-5 h-5" />
@@ -344,16 +399,16 @@ const Admin: React.FC = () => {
 
               <div className="flex flex-col gap-2">
                 <div className={`px-4 py-3 rounded-xl border text-sm font-medium ${getStatusStyle(selectedBooking.status)}`}>
-                  Réservation : <strong>{selectedBooking.status}</strong>
+                  Réservation: <strong>{selectedBooking.status}</strong>
                 </div>
                 {selectedBooking.paymentStatus && selectedBooking.paymentStatus !== 'non applicable' && selectedBooking.paymentStatus !== '' && (
                   <div className={`px-4 py-3 rounded-xl border text-sm font-medium ${getPaymentStatusStyle(selectedBooking.paymentStatus)}`}>
-                    Paiement : <strong>{selectedBooking.paymentStatus}</strong>
+                    Paiement: <strong>{selectedBooking.paymentStatus}</strong>
                   </div>
                 )}
               </div>
 
-              {/* Action buttons – available unless cancelled */}
+              {/* Action buttons */}
               {selectedBooking.status !== 'annulé' && (
                 <div className="flex gap-3">
                   {selectedBooking.status !== 'accepté' && (
@@ -379,7 +434,7 @@ const Admin: React.FC = () => {
               {(selectedBooking.paymentStatus === 'payé' || selectedBooking.paymentReceiptData) && (
                 <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 space-y-3">
                   <p className="text-sm font-bold text-emerald-800">Paiement reçu</p>
-                  {selectedBooking.paymentReceiptData && (
+                  {selectedBooking.paymentReceiptData && isValidReceiptUrl(selectedBooking.paymentReceiptData) && (
                     <div className="flex gap-2">
                       <button
                         onClick={() => setReceiptViewUrl(selectedBooking.paymentReceiptData!)}
@@ -389,7 +444,8 @@ const Admin: React.FC = () => {
                       </button>
                       <a
                         href={selectedBooking.paymentReceiptData}
-                        download={selectedBooking.paymentReceiptName || 'recu'}
+                        target="_blank"
+                        rel="noopener noreferrer"
                         className="inline-flex items-center gap-1.5 px-3 py-2 bg-white border border-emerald-200 rounded-lg text-sm font-bold text-emerald-700 hover:bg-emerald-100 transition-colors"
                       >
                         <Download className="w-4 h-4" /> Télécharger
@@ -422,7 +478,7 @@ const Admin: React.FC = () => {
         </div>
       )}
 
-      {/* Receipt Viewer Modal */}
+      {/* ── Receipt Viewer Modal ───────────────────────────────────────────── */}
       {receiptViewUrl && (
         <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden">
@@ -432,13 +488,46 @@ const Admin: React.FC = () => {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="p-4">
-              {receiptViewUrl.startsWith('data:image') ? (
-                <img src={receiptViewUrl} alt="Reçu" className="w-full rounded-lg max-h-[60vh] object-contain" />
+            <div className="p-4 flex items-center justify-center min-h-[300px]">
+              {!isValidReceiptUrl(receiptViewUrl) ? (
+                // ── Invalid / corrupted URL (e.g. a JSON error string) ──
+                <div className="flex flex-col items-center gap-3 text-slate-400 py-12">
+                  <FileX className="w-12 h-12" />
+                  <p className="font-medium text-sm">Reçu invalide ou introuvable.</p>
+                  <p className="text-xs text-slate-300 max-w-xs text-center break-all">{receiptViewUrl}</p>
+                </div>
+              ) : isImageUrl(receiptViewUrl) ? (
+                <img
+                  src={receiptViewUrl}
+                  alt="Reçu"
+                  className="w-full rounded-lg max-h-[65vh] object-contain"
+                  onError={(e) => {
+                    (e.currentTarget as HTMLImageElement).style.display = 'none';
+                    (e.currentTarget.nextElementSibling as HTMLElement | null)?.removeAttribute('hidden');
+                  }}
+                />
               ) : (
-                <iframe src={receiptViewUrl} title="Reçu PDF" className="w-full h-[60vh] rounded-lg border border-slate-100" />
+                <iframe
+                  src={receiptViewUrl}
+                  title="Reçu PDF"
+                  className="w-full h-[65vh] rounded-lg border border-slate-100"
+                  sandbox="allow-scripts allow-same-origin"
+                />
               )}
             </div>
+            {/* Fallback open-in-new-tab link */}
+            {isValidReceiptUrl(receiptViewUrl) && (
+              <div className="px-6 pb-4 flex justify-end">
+                <a
+                  href={receiptViewUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:text-blue-700"
+                >
+                  <Download className="w-3.5 h-3.5" /> Ouvrir dans un nouvel onglet
+                </a>
+              </div>
+            )}
           </div>
         </div>
       )}

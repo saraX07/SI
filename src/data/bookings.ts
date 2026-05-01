@@ -3,7 +3,8 @@ export type BookingStatus =
   | 'en attente'
   | 'accepté'
   | 'refusé'
-  | 'annulé';
+  | 'annulé'
+  | 'payée';
 
 // ─── Payment status (payment state, managed by admin) ───────────────
 export type PaymentStatus =
@@ -21,13 +22,13 @@ export interface Booking {
   startTime: string;
   endTime: string;
   status: BookingStatus;
-  paymentStatus?: PaymentStatus | string; // managed by admin
+  paymentStatus?: PaymentStatus | string;
   userId: string;
   userName?: string;
   paymentReceiptName?: string;
-  paymentReceiptData?: string; // base64 data URI
+  paymentReceiptData?: string; // base64 data URI or URL
   refusalReason?: string;
-  adminSeen?: boolean; // false = "pas traité par admin"
+  adminSeen?: boolean;
 }
 
 export const initialBookings: Booking[] = [
@@ -93,5 +94,4 @@ export const setBookings = (newBookings: Booking[]) => {
   window.dispatchEvent(new Event('bookingsChanged'));
 };
 
-// Legacy export kept for any remaining imports
-export let bookings = getBookings();
+export const bookings: Booking[] = getBookings();

@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
-import { halls } from '../data/halls';
-import { getBookings, setBookings } from '../data/bookings';
+import { bookingService } from '../services/bookingService';
+import { hallService } from '../services/hallService';
+import { authService } from '../services/authService';
+import type { Hall } from '../data/halls';
 import { Calendar, Clock, MapPin, CheckCircle2, ArrowLeft } from 'lucide-react';
 
 const Booking: React.FC = () => {
@@ -12,27 +14,52 @@ const Booking: React.FC = () => {
   const [date, setDate] = useState('');
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
+  const [halls, setHalls] = useState<Hall[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
   const hallId = searchParams.get('hall');
-  const hall = halls.find(h => h.id === hallId) || halls[0];
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // ── Load halls from Supabase (was using static local array)
+  useEffect(() => {
+    hallService.getAllHalls().then(setHalls);
+  }, []);
+
+  const hall = halls.find((h) => h.id === hallId) ?? halls[0];
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!hall) return;
+    setLoading(true);
+    setError('');
 
-    const newBooking = {
-      id: `b${Date.now()}`,
-      hallName: hall.name,
-      date,
-      startTime,
-      endTime,
-      status: 'en attente de paiement' as const,
-      userId: localStorage.getItem('userEmail') || 'user_demo',
-    };
+    try {
+      const user = await authService.getCurrentUser();
+      if (!user) {
+        navigate('/auth');
+        return;
+      }
 
-    const currentBookings = getBookings();
-    setBookings([newBooking, ...currentBookings]);
+      const { data: profile } = await authService.getProfile(user.id);
 
-    setIsSubmitted(true);
-    setTimeout(() => navigate('/dashboard'), 2000);
+      await bookingService.createBooking({
+        hallName: hall.name,
+        date,
+        startTime,
+        endTime,
+        status: 'en attente',          
+        paymentStatus: 'non applicable',
+        userId: user.id,
+        userName: profile?.full_name ?? user.email ?? '',
+      });
+
+      setIsSubmitted(true);
+      setTimeout(() => navigate('/dashboard'), 2000);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erreur lors de la réservation.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (isSubmitted) {
@@ -49,99 +76,121 @@ const Booking: React.FC = () => {
     );
   }
 
+  if (!hall && halls.length > 0) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="text-slate-500">Salle introuvable.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="bg-slate-50 min-h-screen">
       <Navbar />
 
       <main className="max-w-4xl mx-auto px-6 md:px-12 py-16">
-        <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-slate-500 font-bold text-sm mb-12 hover:text-blue-600 transition-colors">
+        <button
+          onClick={() => navigate(-1)}
+          className="flex items-center gap-2 text-slate-500 font-bold text-sm mb-12 hover:text-blue-600 transition-colors"
+        >
           <ArrowLeft className="w-4 h-4" />
           Retour
         </button>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-          {/* Form */}
-          <div className="bg-white p-8 rounded-2xl border border-slate-100 shadow-sm">
-            <h1 className="text-2xl font-extrabold text-slate-900 mb-8 tracking-tight">Réserver {hall.name}</h1>
+        {hall && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+            {/* Form */}
+            <div className="bg-white p-8 rounded-2xl border border-slate-100 shadow-sm">
+              <h1 className="text-2xl font-extrabold text-slate-900 mb-8 tracking-tight">
+                Réserver {hall.name}
+              </h1>
 
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="space-y-1">
-                <label className="text-sm font-bold text-slate-700">Date souhaitée</label>
-                <div className="relative">
-                  <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <input 
-                    type="date" 
-                    required 
-                    className="input-field pl-10" 
-                    value={date}
-                    onChange={(e) => setDate(e.target.value)}
-                  />
+              {error && (
+                <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
+                  {error}
                 </div>
-              </div>
+              )}
 
-              <div className="grid grid-cols-2 gap-4">
+              <form onSubmit={handleSubmit} className="space-y-6">
                 <div className="space-y-1">
-                  <label className="text-sm font-bold text-slate-700">Début</label>
+                  <label className="text-sm font-bold text-slate-700">Date souhaitée</label>
                   <div className="relative">
-                    <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <input 
-                      type="time" 
-                      required 
-                      className="input-field pl-10" 
-                      value={startTime}
-                      onChange={(e) => setStartTime(e.target.value)}
+                    <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      type="date"
+                      required
+                      className="input-field pl-10"
+                      value={date}
+                      onChange={(e) => setDate(e.target.value)}
                     />
                   </div>
                 </div>
-                <div className="space-y-1">
-                  <label className="text-sm font-bold text-slate-700">Fin</label>
-                  <div className="relative">
-                    <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <input 
-                      type="time" 
-                      required 
-                      className="input-field pl-10" 
-                      value={endTime}
-                      onChange={(e) => setEndTime(e.target.value)}
-                    />
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-sm font-bold text-slate-700">Début</label>
+                    <div className="relative">
+                      <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <input
+                        type="time"
+                        required
+                        className="input-field pl-10"
+                        value={startTime}
+                        onChange={(e) => setStartTime(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-sm font-bold text-slate-700">Fin</label>
+                    <div className="relative">
+                      <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <input
+                        type="time"
+                        required
+                        className="input-field pl-10"
+                        value={endTime}
+                        onChange={(e) => setEndTime(e.target.value)}
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
 
-
-
-              <div className="pt-4">
-                <button type="submit" className="btn-blue w-full py-4 font-bold shadow-lg shadow-blue-100">
-                  Confirmer la demande
-                </button>
-              </div>
-            </form>
-          </div>
-
-          {/* Hall Meta */}
-          <div className="space-y-8 pt-4">
-            <div className="p-8 rounded-2xl bg-blue-600 text-white shadow-xl shadow-blue-200">
-              <h3 className="text-xl font-bold mb-4">Détails de la salle</h3>
-              <p className="text-white/80 mb-6 leading-relaxed font-medium">
-                {hall.description}
-              </p>
-              <div className="space-y-4">
-                <div className="flex items-center gap-3">
-                  <MapPin className="w-5 h-5 text-white/50" />
-                  <span className="font-bold">{hall.location}</span>
+                <div className="pt-4">
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="btn-blue w-full py-4 font-bold shadow-lg shadow-blue-100"
+                  >
+                    {loading ? 'Envoi en cours...' : 'Confirmer la demande'}
+                  </button>
                 </div>
-                <div className="flex items-center gap-3">
-                  <div className="text-2xl font-bold">{hall.price.toLocaleString()} DA</div>
-                  <span className="text-white/50 text-sm">/ jour</span>
-                </div>
-              </div>
+              </form>
             </div>
 
-            <p className="text-slate-400 text-xs text-center px-4 font-medium leading-relaxed">
-              Une fois votre demande soumise, un administrateur examinera votre dossier et vous contactera dans les plus brefs délais.
-            </p>
+            {/* Hall Meta */}
+            <div className="space-y-8 pt-4">
+              <div className="p-8 rounded-2xl bg-blue-600 text-white shadow-xl shadow-blue-200">
+                <h3 className="text-xl font-bold mb-4">Détails de la salle</h3>
+                <p className="text-white/80 mb-6 leading-relaxed font-medium">{hall.description}</p>
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3">
+                    <MapPin className="w-5 h-5 text-white/50" />
+                    <span className="font-bold">{hall.location}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="text-2xl font-bold">{hall.price.toLocaleString()} DA</div>
+                    <span className="text-white/50 text-sm">/ jour</span>
+                  </div>
+                </div>
+              </div>
+
+              <p className="text-slate-400 text-xs text-center px-4 font-medium leading-relaxed">
+                Une fois votre demande soumise, un administrateur examinera votre dossier et vous
+                contactera dans les plus brefs délais.
+              </p>
+            </div>
           </div>
-        </div>
+        )}
       </main>
     </div>
   );
