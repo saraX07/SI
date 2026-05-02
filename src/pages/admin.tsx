@@ -5,7 +5,7 @@ import { bookingService } from '../services/bookingService';
 import { hallService } from '../services/hallService';
 import { authService } from '../services/authService';
 import type { Booking } from '../data/bookings';
-import type { Hall } from '../data/halls';
+
 import {
   LogOut, Calendar, Clock, CheckCircle2, XCircle, CreditCard,
   Download, Eye, X, Plus, AlertCircle, LayoutDashboard, FileX,
@@ -31,7 +31,7 @@ const isValidReceiptUrl = (url: string): boolean =>
 const Admin: React.FC = () => {
   const navigate = useNavigate();
   const [bookings, setLocalBookings] = useState<Booking[]>([]);
-  const [halls, setLocalHalls] = useState<Hall[]>([]);
+
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [showAddHall, setShowAddHall] = useState(false);
   const [receiptViewUrl, setReceiptViewUrl] = useState<string | null>(null);
@@ -64,9 +64,7 @@ const Admin: React.FC = () => {
   const refresh = useCallback(async () => {
     if (!isAdmin) return;
     const allBookings = await bookingService.getAllBookings();
-    const allHalls = await hallService.getAllHalls();
     setLocalBookings(allBookings);
-    setLocalHalls(allHalls);
   }, [isAdmin]);
 
   useEffect(() => {
