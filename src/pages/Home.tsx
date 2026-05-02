@@ -2,16 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import { ArrowRight, CheckCircle2, Star, ShieldCheck } from 'lucide-react';
-import HallCard from '../components/HallCard';
-import { useSupabase } from '../context/SupabaseContext';
-
 const Home: React.FC = () => {
-  const { halls } = useSupabase();
-
-  const handleScrollToSalles = (e: React.MouseEvent<HTMLAnchorElement>) => {
-    e.preventDefault();
-    document.getElementById('salles')?.scrollIntoView({ behavior: 'smooth' });
-  };
 
   return (
     <div className="bg-white min-h-screen">
@@ -44,10 +35,10 @@ const Home: React.FC = () => {
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <a href="#salles" onClick={handleScrollToSalles} className="btn-gold py-4 px-10 text-lg font-bold w-full sm:w-auto">
+            <Link to="/salles" className="btn-gold flex items-center justify-center py-4 px-10 text-lg font-bold w-full sm:w-auto">
               Explorer les salles
               <ArrowRight className="ml-2 w-5 h-5" />
-            </a>
+            </Link>
             <Link to="/auth" className="border-2 border-white/30 text-white font-bold px-10 py-4 rounded-lg hover:bg-white/10 transition-all">
               Créer un compte
             </Link>
@@ -84,24 +75,7 @@ const Home: React.FC = () => {
         </div>
       </section>
 
-      {/* Salles Section */}
-      <section id="salles" className="max-w-7xl mx-auto px-6 md:px-12 py-16">
-        <div className="text-center mb-12">
-          <h2 className="text-3xl md:text-5xl font-extrabold mb-4 tracking-tight text-slate-900">Nos Salles Disponibles</h2>
-          <p className="text-slate-500 font-medium text-lg">Trouvez l'endroit idéal pour célébrer vos événements les plus précieux.</p>
-        </div>
-        {halls.length === 0 ? (
-          <div className="py-20 text-center">
-            <p className="text-slate-400 font-medium">Chargement des salles…</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {halls.map((hall) => (
-              <HallCard key={hall.id} hall={hall} />
-            ))}
-          </div>
-        )}
-      </section>
+
     </div>
   );
 };
