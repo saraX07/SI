@@ -1,7 +1,25 @@
 import { supabase } from '../lib/supabase';
 import type { Booking } from '../data/bookings';
 
+// Helper : mappe une ligne DB ->interface Booking du frontend
+const mapBooking = (booking: Record<string, unknown>): Booking => ({
+  id: booking.id as string,
+  hallName: booking.hall_name as string,
+  date: booking.date as string,
+  startTime: booking.start_time as string,
+  endTime: booking.end_time as string,
+  status: booking.status as Booking['status'],
+  paymentStatus: booking.payment_status as Booking['paymentStatus'],
+  userId: booking.user_id as string,
+  userName: booking.user_name as string,
+  paymentReceiptName: booking.payment_receipt_name as string,
+  paymentReceiptData: booking.payment_receipt_data as string, 
+  refusalReason: booking.refusal_reason as string,
+  adminSeen: booking.admin_seen as boolean,
+});
+
 export const bookingService = {
+
   async getUserBookings(userId: string): Promise<Booking[]> {
     const { data, error } = await supabase
       .from('bookings')
@@ -13,22 +31,7 @@ export const bookingService = {
       console.error('Error fetching bookings:', error);
       return [];
     }
-
-    return data.map(booking => ({
-      id: booking.id,
-      hallName: booking.hall_name,
-      date: booking.date,
-      startTime: booking.start_time,
-      endTime: booking.end_time,
-      status: booking.status,
-      paymentStatus: booking.payment_status,
-      userId: booking.user_id,
-      userName: booking.user_name,
-      paymentReceiptName: booking.payment_receipt_name,
-      paymentReceiptData: booking.payment_receipt_url,
-      refusalReason: booking.refusal_reason,
-      adminSeen: booking.admin_seen,
-    }));
+    return data.map(mapBooking);
   },
 
   async getAllBookings(): Promise<Booking[]> {
@@ -41,37 +44,22 @@ export const bookingService = {
       console.error('Error fetching all bookings:', error);
       return [];
     }
-
-    return data.map(booking => ({
-      id: booking.id,
-      hallName: booking.hall_name,
-      date: booking.date,
-      startTime: booking.start_time,
-      endTime: booking.end_time,
-      status: booking.status,
-      paymentStatus: booking.payment_status,
-      userId: booking.user_id,
-      userName: booking.user_name,
-      paymentReceiptName: booking.payment_receipt_name,
-      paymentReceiptData: booking.payment_receipt_url,
-      refusalReason: booking.refusal_reason,
-      adminSeen: booking.admin_seen,
-    }));
+    return data.map(mapBooking);
   },
 
   async createBooking(booking: Omit<Booking, 'id'>) {
     const { data, error } = await supabase
       .from('bookings')
       .insert([{
-        user_id: booking.userId,
-        user_name: booking.userName,
-        hall_name: booking.hallName,
-        date: booking.date,
-        start_time: booking.startTime,
-        end_time: booking.endTime,
-        status: booking.status,
+        user_id:        booking.userId,
+        user_name:      booking.userName,
+        hall_name:      booking.hallName,
+        date:           booking.date,
+        start_time:     booking.startTime,
+        end_time:       booking.endTime,
+        status:         booking.status,
         payment_status: booking.paymentStatus || 'non applicable',
-        admin_seen: false,
+        admin_seen:     false,
       }])
       .select()
       .single();
@@ -82,11 +70,12 @@ export const bookingService = {
 
   async updateBooking(id: string, updates: Partial<Booking>) {
     const dbUpdates: Record<string, string | boolean> = {};
-    if (updates.status !== undefined) dbUpdates.status = updates.status;
-    if (updates.paymentStatus !== undefined) dbUpdates.payment_status = updates.paymentStatus;
-    if (updates.adminSeen !== undefined) dbUpdates.admin_seen = updates.adminSeen;
-    if (updates.refusalReason !== undefined) dbUpdates.refusal_reason = updates.refusalReason;
-    if (updates.userName !== undefined) dbUpdates.user_name = updates.userName;
+
+    if (updates.status          !== undefined) dbUpdates.status           = updates.status;
+    if (updates.paymentStatus   !== undefined) dbUpdates.payment_status   = updates.paymentStatus;
+    if (updates.adminSeen       !== undefined) dbUpdates.admin_seen       = updates.adminSeen;
+    if (updates.refusalReason   !== undefined) dbUpdates.refusal_reason   = updates.refusalReason;
+    if (updates.userName        !== undefined) dbUpdates.user_name        = updates.userName;
 
     const { data, error } = await supabase
       .from('bookings')
@@ -103,12 +92,14 @@ export const bookingService = {
     const fileExt = file.name.split('.').pop();
     const fileName = `${bookingId}_${Date.now()}.${fileExt}`;
 
+    // 1. Upload du fichier dans le bucket Storage
     const { error: uploadError } = await supabase.storage
       .from('receipts')
       .upload(fileName, file);
 
     if (uploadError) throw uploadError;
 
+    // 2. Récupérer l'URL publique
     const { data: { publicUrl } } = supabase.storage
       .from('receipts')
       .getPublicUrl(fileName);
@@ -116,10 +107,9 @@ export const bookingService = {
     const { error: updateError } = await supabase
       .from('bookings')
       .update({
-        payment_receipt_url: publicUrl,  
+        payment_receipt_data: publicUrl,    
         payment_receipt_name: file.name,
-        payment_status: 'payé',
-        status: 'accepté',               
+        payment_status:       'en attente de paiement', 
       })
       .eq('id', bookingId);
 
