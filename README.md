@@ -37,6 +37,8 @@ Tables principales :
 ## 🚀 Démo en ligne
 Vous pouvez accéder au projet déployé ici :  
 👉 https://si-sykp.vercel.app
+## 📄 Rapport Architecte
+👉 https://drive.google.com/file/d/1ioMii0NpJ7ZI0tLxV5Y5YLa9cBwS99-v/view?usp=sharing
 
 ## 👥 Équipe
 - Rania Hank  
